@@ -507,6 +507,26 @@ html, body { margin: 0; padding: 0; }
         </div>
       </section>
     </div>
+
+    <!-- Month-wise milk sales chart -->
+    <section class="px-margin-desktop pb-5 no-print" id="monthlyMilkChartSection">
+      <div class="bg-surface-container-lowest rounded-2xl p-4 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 class="font-headline-sm font-bold flex items-center gap-2"><span class="material-symbols-outlined text-primary">bar_chart</span>महीनेवार दूध बिक्री</h2>
+            <p class="text-label-sm text-on-surface-variant mt-1">सभी किसानों के दूध रिकॉर्ड की कुल राशि</p>
+          </div>
+          <select id="monthlyMilkChartYear" class="bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-label-md font-semibold" onchange="renderMonthlyMilkChart()" aria-label="वर्ष चुनें"></select>
+        </div>
+        <div class="flex flex-wrap items-end justify-between gap-2 mb-3">
+          <div><div class="text-label-sm text-on-surface-variant">इस वर्ष की कुल बिक्री</div><div id="monthlyMilkChartTotal" class="text-currency-display font-black text-primary">₹0</div></div>
+          <div class="text-label-sm text-on-surface-variant" id="monthlyMilkChartHint">महीने के अनुसार कुल दूध मूल्य</div>
+        </div>
+        <div class="overflow-x-auto pb-2">
+          <div id="monthlyMilkChartBars" class="grid grid-cols-12 gap-2 min-w-[620px] items-end" style="height:190px"></div>
+        </div>
+      </div>
+    </section>
   </div>
   
   <div id="screen-passbook" class="screen">
@@ -1300,7 +1320,42 @@ function handleSkipSubmit(e) {
   if (window.onDataChanged) window.onDataChanged();
 }
 
+function renderMonthlyMilkChart() {
+  const barsEl = document.getElementById('monthlyMilkChartBars');
+  const yearEl = document.getElementById('monthlyMilkChartYear');
+  const totalEl = document.getElementById('monthlyMilkChartTotal');
+  if (!barsEl || !yearEl || !totalEl) return;
+  const monthNames = ['जनवरी','फरवरी','मार्च','अप्रैल','मई','जून','जुलाई','अगस्त','सितम्बर','अक्टूबर','नवम्बर','दिसम्बर'];
+  const currentYear = new Date().getFullYear();
+  const years = new Set([currentYear]);
+  (state.entries || []).forEach(e => { if (e.type === 'milk' && /^\d{4}-\d{2}/.test(e.date || '')) years.add(Number(e.date.slice(0,4))); });
+  const sortedYears = [...years].sort((a,b) => b-a);
+  const previous = Number(yearEl.value);
+  yearEl.innerHTML = sortedYears.map(y => `<option value="${y}">${y}</option>`).join('');
+  yearEl.value = sortedYears.includes(previous) ? String(previous) : String(currentYear);
+  const year = Number(yearEl.value);
+  const totals = Array(12).fill(0);
+  (state.entries || []).forEach(e => {
+    if (e.type !== 'milk' || !e.date || Number(e.date.slice(0,4)) !== year) return;
+    const month = Number(e.date.slice(5,7)) - 1;
+    if (month >= 0 && month < 12) totals[month] += Number(e.total) || 0;
+  });
+  const grandTotal = totals.reduce((a,b) => a+b, 0);
+  const max = Math.max(...totals, 1);
+  const money = value => '₹' + Math.round(value).toLocaleString('en-IN');
+  totalEl.textContent = money(grandTotal);
+  barsEl.innerHTML = totals.map((amount, i) => {
+    const height = amount > 0 ? Math.max(5, Math.round((amount / max) * 112)) : 2;
+    return `<div class="flex flex-col items-center justify-end h-full min-w-0" title="${monthNames[i]} ${year}: ${money(amount)}">
+      <div class="text-[9px] sm:text-[10px] font-bold text-on-surface-variant whitespace-nowrap mb-1">${amount > 0 ? money(amount) : '—'}</div>
+      <div class="w-full max-w-[34px] rounded-t-md bg-gradient-to-t from-indigo-600 to-violet-400 shadow-sm" style="height:${height}px;opacity:${amount > 0 ? 1 : .16}"></div>
+      <div class="text-[10px] font-semibold text-on-surface-variant mt-2 whitespace-nowrap">${monthNames[i]}</div>
+    </div>`;
+  }).join('');
+}
+
 function refreshCollectionUI() {
+  renderMonthlyMilkChart();
   const selected = state.selectedDate;
   const dayEntries = state.entries.filter(e => e.date === selected && (e.type === 'milk' || e.type === 'skip') && e.animalType !== 'buffalo');
   const totalLiters = dayEntries.filter(e => e.type === 'milk').reduce((s, e) => s + e.liters, 0);
@@ -2706,7 +2761,7 @@ function handleFbError(err) {
 
 function refreshAllUI() {
   try {
-    populateFarmerSelects(); updateFarmerInfo(); calculateTotal(); refreshCollectionUI(); applyDairyInfo();
+    populateFarmerSelects(); updateFarmerInfo(); calculateTotal(); refreshCollectionUI(); renderMonthlyMilkChart(); applyDairyInfo();
     const b = document.getElementById('buffaloRateDisplay'); if (b) b.textContent = state.buffaloRate.toFixed(2);
     const c = document.getElementById('cowRateDisplay'); if (c) c.textContent = state.cowRate.toFixed(2);
     if (typeof renderFarmersList === 'function') renderFarmersList();
